@@ -1,0 +1,11 @@
+# F1 Strategy Engineer - Dependencies
+# Core data
+fastf1>=3.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Interpolation & scientific computing
+scipy>=1.10.0
+
+# Visualization
+pygame>=2.5.0
