@@ -96,7 +96,7 @@ class GameRenderer:
     
     def _draw_car(self, car: CarState, is_player: bool):
         """Draw a single car on the track."""
-        pixel = self.mapper.geo_to_pixel(car.position_x, car.position_y)
+        pixel = self.mapper.geo_to_pixel(car.track_x, car.track_y)
         
         # Apply Pit Stop Offset for cars in pit
         if car.in_pit:
@@ -150,13 +150,13 @@ class GameRenderer:
             self.screen.blit(label, (x + 10, y - 5))
 
     def draw_dashboard(self, state: CarState, laps_total: int, current_weather_rain: float, 
-                       player_position: int, total_cars: int):
+                       player_position: int, total_cars: int, comparison: dict = None):
         """
-        Draw TV-style telemetry HUD with position info.
+        Draw TV-style telemetry HUD with position info and historical comparison.
         """
         # Dashboard Panel Background
-        panel_w, panel_h = 300, 220
-        panel_x, panel_y = 20, self.height - 240
+        panel_w, panel_h = 320, 260
+        panel_x, panel_y = 20, self.height - 280
         
         surf = pygame.Surface((panel_w, panel_h))
         surf.set_alpha(200)
@@ -171,6 +171,22 @@ class GameRenderer:
         pos_text = self.font_large.render(f"P{player_position}", True, pos_color)
         self.screen.blit(pos_text, (panel_x + 20, panel_y + 15))
         
+        # Historical comparison (if available)
+        if comparison:
+            delta = comparison.get('position_delta', 0)
+            if delta > 0:
+                delta_text = f"+{delta} vs REAL"
+                delta_color = (0, 255, 0)  # Green = better
+            elif delta < 0:
+                delta_text = f"{delta} vs REAL"
+                delta_color = (255, 0, 0)  # Red = worse
+            else:
+                delta_text = "= REAL"
+                delta_color = (255, 255, 255)
+            
+            cmp_surf = self.font_small.render(delta_text, True, delta_color)
+            self.screen.blit(cmp_surf, (panel_x + 80, panel_y + 18))
+        
         # Pit status
         pit_status = ""
         if state.in_pit:
@@ -180,11 +196,11 @@ class GameRenderer:
         
         # Data Rows
         lines = [
-            f"LAP: {state.lap} / {laps_total}",
-            f"SPD: {state.speed:.0f} km/h  GEAR: {state.gear}",
-            f"TIRE: {state.compound} ({state.tire_age_laps:.1f}L)",
+            f"LAP: {state.current_lap} / {laps_total}",
+            f"TIRE: {state.compound} ({state.tire_age}L)",
             f"WEAR: {int(state.tire_wear * 100)}%",
-            f"RAIN: {int(current_weather_rain * 100)}%",
+            f"GAP: +{state.gap_to_leader:.1f}s" if state.gap_to_leader > 0 else "GAP: LEADER",
+            f"LAST: {state.last_lap_time:.1f}s",
             f"MODE: {state.mode}",
             pit_status
         ]
@@ -205,7 +221,7 @@ class GameRenderer:
                 color = (255, 165, 0)
                 
             tsurf = font.render(line, True, color)
-            self.screen.blit(tsurf, (panel_x + 80, panel_y + 15 + i*25))
+            self.screen.blit(tsurf, (panel_x + 20, panel_y + 50 + i*25))
     
     def draw_leaderboard(self, sorted_cars: List[CarState], player_driver: str):
         """
@@ -249,9 +265,12 @@ class GameRenderer:
             drv_text = self.font_tiny.render(car.driver_code, True, color)
             self.screen.blit(drv_text, (panel_x + 35, y_pos))
             
-            # Lap info
-            lap_text = self.font_tiny.render(f"L{car.lap}", True, (120, 120, 120))
-            self.screen.blit(lap_text, (panel_x + 90, y_pos))
+            # Lap and gap info
+            if car.gap_to_leader > 0:
+                gap_text = self.font_tiny.render(f"+{car.gap_to_leader:.1f}s", True, (120, 120, 120))
+            else:
+                gap_text = self.font_tiny.render(f"L{car.current_lap}", True, (120, 120, 120))
+            self.screen.blit(gap_text, (panel_x + 90, y_pos))
             
     def draw_controls(self, current_mode: str, pit_requested: bool = False):
         """
@@ -398,11 +417,11 @@ class GameRenderer:
                 engine.set_mode("CONSERVE")
             elif self.btn_box.collidepoint(mouse_pos):
                 if engine.player_state.pit_requested:
-                    engine.cancel_box()
+                    engine.cancel_pit()
                 else:
                     current = engine.player_state.compound
                     next_compound = "MEDIUM" if current == "SOFT" else ("HARD" if current == "MEDIUM" else "SOFT")
-                    engine.request_box(next_compound)
+                    engine.request_pit(next_compound)
             
             # Timeline scrubber
             elif hasattr(self, 'timeline_rect') and self.timeline_rect.collidepoint(mouse_pos):
@@ -416,9 +435,9 @@ class GameRenderer:
             elif hasattr(self, 'btn_lap_start') and self.btn_lap_start.collidepoint(mouse_pos):
                 engine.jump_to_lap(1)
             elif hasattr(self, 'btn_lap_prev') and self.btn_lap_prev.collidepoint(mouse_pos):
-                engine.jump_to_lap(engine.player_state.lap - 1)
+                engine.jump_to_lap(engine.player_state.current_lap - 1)
             elif hasattr(self, 'btn_lap_next') and self.btn_lap_next.collidepoint(mouse_pos):
-                engine.jump_to_lap(engine.player_state.lap + 1)
+                engine.jump_to_lap(engine.player_state.current_lap + 1)
             elif hasattr(self, 'btn_lap_end') and self.btn_lap_end.collidepoint(mouse_pos):
                 engine.jump_to_lap(engine.total_laps - 2)  # Jump to last 2 laps
 
